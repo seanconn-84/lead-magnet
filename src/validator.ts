@@ -172,7 +172,10 @@ export async function validateUsername(
   username: string,
   options?: ValidatorOptions
 ): Promise<ValidationResult> {
-  const opts = { ...DEFAULT_OPTIONS, ...options };
+  const defined = Object.fromEntries(
+    Object.entries(options ?? {}).filter(([, v]) => v !== undefined)
+  );
+  const opts = { ...DEFAULT_OPTIONS, ...defined };
 
   // Normalize — strip @ prefix and lowercase
   const bare = (username.startsWith("@") ? username.slice(1) : username).toLowerCase();
@@ -204,7 +207,10 @@ export async function validateUsernames(
   usernames: string[],
   options?: ValidatorOptions
 ): Promise<ValidationResult[]> {
-  const opts = { ...DEFAULT_OPTIONS, ...options };
+  const defined = Object.fromEntries(
+    Object.entries(options ?? {}).filter(([, v]) => v !== undefined)
+  );
+  const opts = { ...DEFAULT_OPTIONS, ...defined };
   const results: ValidationResult[] = [];
 
   // Process in batches
