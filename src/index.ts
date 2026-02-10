@@ -9,7 +9,8 @@
  *   npx telegram-username-validator scan    "text with @users and t.me/links"
  */
 
-import { parse, check, scan } from "./agent";
+import { parse, check, checkFile, scan } from "./agent";
+import { formatCsv } from "./csv";
 
 const USAGE = `
 Telegram Username Validator
@@ -18,18 +19,25 @@ Usage:
   telegram-username-validator <command> <args...>
 
 Commands:
-  parse <text>           Extract usernames from text (offline)
-  check <user...>        Check if usernames exist on Telegram
-  scan  <text>           Extract and validate all usernames in text
+  parse      <text>        Extract usernames from text (offline)
+  check      <user...>     Check if usernames exist on Telegram
+  check-file <file.csv>    Check usernames from a CSV file
+  scan       <text>        Extract and validate all usernames in text
 
 Options:
-  --existing-only        Only show usernames that exist (check/scan)
-  --timeout <ms>         HTTP timeout in ms (default: 10000)
-  --concurrency <n>      Max parallel requests (default: 5)
+  --existing-only          Only show usernames that exist
+  --timeout <ms>           HTTP timeout in ms (default: 10000)
+  --concurrency <n>        Max parallel requests (default: 5)
+  --column <name|index>    CSV column containing usernames (default: auto-detect)
+  --delimiter <char>       CSV delimiter (default: auto-detect)
+  --output <file.csv>      Write results to a CSV file
+  --format <table|csv>     Output format (default: table)
 
 Examples:
   telegram-username-validator parse "Contact @durov or visit t.me/telegram"
   telegram-username-validator check durov BotFather notarealuser123
+  telegram-username-validator check-file users.csv --output results.csv
+  telegram-username-validator check-file leads.csv --column telegram --existing-only
   telegram-username-validator scan "Follow @durov and @BotFather" --existing-only
 `.trim();
 
@@ -72,7 +80,16 @@ async function main() {
     concurrency: flags["concurrency"]
       ? Number(flags["concurrency"])
       : undefined,
+    column: flags["column"]
+      ? isNaN(Number(flags["column"]))
+        ? String(flags["column"])
+        : Number(flags["column"])
+      : undefined,
+    delimiter: flags["delimiter"] ? String(flags["delimiter"]) : undefined,
+    output: flags["output"] ? String(flags["output"]) : undefined,
   };
+
+  const outputFormat = flags["format"] === "csv" ? "csv" : "table";
 
   switch (command) {
     case "parse": {
@@ -100,17 +117,56 @@ async function main() {
       }
       console.log(`Checking ${rest.length} username(s)...\n`);
       const results = await check(rest, options);
-      for (const r of results) {
-        const status = r.exists ? "EXISTS" : "NOT FOUND";
-        const extra = r.displayName ? ` — ${r.displayName}` : "";
-        const type = r.profileType ? ` [${r.profileType}]` : "";
-        const err = r.error ? ` (${r.error})` : "";
-        console.log(`  ${r.username}: ${status}${type}${extra}${err}`);
+
+      if (outputFormat === "csv") {
+        console.log(formatCsv(results));
+      } else {
+        for (const r of results) {
+          const status = r.exists ? "EXISTS" : "NOT FOUND";
+          const extra = r.displayName ? ` — ${r.displayName}` : "";
+          const type = r.profileType ? ` [${r.profileType}]` : "";
+          const err = r.error ? ` (${r.error})` : "";
+          console.log(`  ${r.username}: ${status}${type}${extra}${err}`);
+        }
+        const existing = results.filter((r) => r.exists).length;
+        console.log(
+          `\n${existing}/${results.length} username(s) verified as existing.`
+        );
       }
-      const existing = results.filter((r) => r.exists).length;
+      break;
+    }
+
+    case "check-file": {
+      const filePath = rest[0];
+      if (!filePath) {
+        console.error("Error: provide a CSV file path");
+        process.exit(1);
+      }
+      console.log(`Reading usernames from ${filePath}...\n`);
+      const { rows, validated } = await checkFile(filePath, options);
       console.log(
-        `\n${existing}/${results.length} username(s) verified as existing.`
+        `Loaded ${rows.length} username(s) from CSV, validated results:\n`
       );
+
+      if (outputFormat === "csv") {
+        console.log(formatCsv(validated));
+      } else {
+        for (const r of validated) {
+          const status = r.exists ? "EXISTS" : "NOT FOUND";
+          const extra = r.displayName ? ` — ${r.displayName}` : "";
+          const type = r.profileType ? ` [${r.profileType}]` : "";
+          const err = r.error ? ` (${r.error})` : "";
+          console.log(`  ${r.username}: ${status}${type}${extra}${err}`);
+        }
+        const existing = validated.filter((r) => r.exists).length;
+        console.log(
+          `\n${existing}/${validated.length} username(s) verified as existing.`
+        );
+      }
+
+      if (options.output) {
+        console.log(`\nResults written to ${options.output}`);
+      }
       break;
     }
 
