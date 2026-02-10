@@ -360,7 +360,10 @@
     <div class="results-section" id="results">
       <div class="results-header">
         <h3 id="resultsTitle">Results</h3>
-        <button class="btn btn-primary" id="downloadBtn" style="display:none">Download CSV</button>
+        <div class="btn-row" style="margin-top:0">
+          <button class="btn btn-primary" id="downloadExistingBtn" style="display:none">Download Existing Only</button>
+          <button class="btn btn-secondary" id="downloadAllBtn" style="display:none">Download All</button>
+        </div>
       </div>
 
       <div class="filter-row">
@@ -396,6 +399,7 @@
     let currentFilter = "all";
     let selectedFile = null;
     let jobId = null;
+    let pollTimer = null;
 
     // Elements
     const $ = (sel) => document.querySelector(sel);
@@ -451,7 +455,6 @@
       $("#startBtn").disabled = false;
       $("#clearBtn").style.display = "inline-block";
 
-      // Parse headers to show column selector
       const reader = new FileReader();
       reader.onload = (e) => {
         const firstLine = e.target.result.split("\n")[0];
@@ -484,7 +487,7 @@
       $("#columnSelect").classList.remove("visible");
     });
 
-    // Start CSV validation
+    // Start CSV validation — upload then poll
     $("#startBtn").addEventListener("click", () => {
       if (!selectedFile) return;
       startCsvValidation();
@@ -514,45 +517,63 @@
           return;
         }
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
+        const data = await response.json();
+        jobId = data.jobId;
+        const total = data.total;
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+        $("#progressCount").textContent = `0 / ${total}`;
 
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n\n");
-          buffer = lines.pop() || "";
-
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            const data = JSON.parse(line.slice(6));
-            handleSSE(data);
-          }
-        }
+        // Start polling for results
+        pollForResults(total);
       } catch (err) {
         alert("Connection error: " + err.message);
+        $("#startBtn").disabled = false;
       }
-
-      $("#startBtn").disabled = false;
-      $("#progressLabel").textContent = "Complete";
     }
 
-    function handleSSE(data) {
-      if (data.type === "start") {
-        $("#progressCount").textContent = `0 / ${data.total}`;
-      } else if (data.type === "result") {
-        allResults.push(data.result);
-        updateProgress(data.index, data.total);
-        renderResults();
-      } else if (data.type === "done") {
-        jobId = data.jobId;
-        if (jobId) {
-          $("#downloadBtn").style.display = "inline-block";
+    function pollForResults(total) {
+      let received = 0;
+
+      async function poll() {
+        try {
+          const res = await fetch(`/api/jobs/${jobId}?after=${received}`);
+          if (!res.ok) return;
+
+          const data = await res.json();
+
+          // Add new results
+          for (const r of data.results) {
+            allResults.push(r);
+          }
+          received = allResults.length;
+
+          updateProgress(data.processed, total);
+          renderResults();
+
+          if (data.status === "done") {
+            $("#progressLabel").textContent = "Complete";
+            $("#startBtn").disabled = false;
+            showDownloadButtons();
+            return;
+          }
+
+          // Keep polling
+          pollTimer = setTimeout(poll, 1000);
+        } catch (err) {
+          // Retry on network blip
+          pollTimer = setTimeout(poll, 2000);
         }
       }
+
+      poll();
+    }
+
+    function showDownloadButtons() {
+      const exists = allResults.filter((r) => r.exists).length;
+      if (exists > 0) {
+        $("#downloadExistingBtn").style.display = "inline-block";
+      }
+      $("#downloadAllBtn").style.display = "inline-block";
     }
 
     function updateProgress(current, total) {
@@ -607,11 +628,13 @@
       if (e.key === "Enter") $("#manualBtn").click();
     });
 
-    // Download
-    $("#downloadBtn").addEventListener("click", () => {
-      if (jobId) {
-        window.location.href = `/api/download/${jobId}`;
-      }
+    // Downloads
+    $("#downloadExistingBtn").addEventListener("click", () => {
+      if (jobId) window.location.href = `/api/download/${jobId}/existing`;
+    });
+
+    $("#downloadAllBtn").addEventListener("click", () => {
+      if (jobId) window.location.href = `/api/download/${jobId}`;
     });
 
     // Filters
@@ -629,10 +652,12 @@
       allResults = [];
       jobId = null;
       currentFilter = "all";
+      if (pollTimer) clearTimeout(pollTimer);
       $$(".filter-btn").forEach((b) => b.classList.remove("active"));
       $$('.filter-btn[data-filter="all"]').forEach((b) => b.classList.add("active"));
       $("#resultsBody").innerHTML = "";
-      $("#downloadBtn").style.display = "none";
+      $("#downloadExistingBtn").style.display = "none";
+      $("#downloadAllBtn").style.display = "none";
       $("#progressFill").style.width = "0%";
       $("#progressLabel").textContent = "Validating...";
       $("#progress").classList.remove("visible");
@@ -656,7 +681,6 @@
         return;
       }
 
-      // Only render first 500 for performance
       const shown = filtered.slice(0, 500);
 
       for (let i = 0; i < shown.length; i++) {

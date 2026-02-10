@@ -2,10 +2,12 @@
  * Express API server for the Telegram username validator.
  *
  * Endpoints:
- *   GET  /                    — Serves the frontend
- *   POST /api/check           — Validate usernames from JSON body
- *   POST /api/upload          — Upload CSV, validate, stream results via SSE
- *   GET  /api/download/:id    — Download results CSV
+ *   GET  /                           — Serves the frontend
+ *   POST /api/check                  — Validate usernames from JSON body
+ *   POST /api/upload                 — Upload CSV, start background validation job
+ *   GET  /api/jobs/:id               — Poll job progress
+ *   GET  /api/download/:id           — Download all results CSV
+ *   GET  /api/download/:id/existing  — Download only existing usernames CSV
  */
 
 import express from "express";
@@ -13,7 +15,7 @@ import multer from "multer";
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
-import { readCsv, writeCsv, formatCsv } from "../csv";
+import { readCsv, writeCsv } from "../csv";
 import { parseUsername } from "../parser";
 import { validateUsername, ValidationResult } from "../validator";
 
@@ -26,11 +28,19 @@ app.use(express.static(path.join(__dirname, "../../public")));
 // File upload config — store in temp dir
 const upload = multer({ dest: os.tmpdir() });
 
-// Store completed jobs for download
-const jobs = new Map<
-  string,
-  { results: (ValidationResult & { originalColumns?: Record<string, string> })[]; fileName: string }
->();
+interface JobResult extends ValidationResult {
+  originalColumns?: Record<string, string>;
+}
+
+interface Job {
+  status: "processing" | "done";
+  total: number;
+  processed: number;
+  results: JobResult[];
+  fileName: string;
+}
+
+const jobs = new Map<string, Job>();
 
 /**
  * POST /api/check
@@ -55,9 +65,42 @@ app.post("/api/check", async (req, res) => {
 });
 
 /**
+ * Runs validation in the background for a job.
+ */
+async function processJob(jobId: string, rows: { username: string; columns: Record<string, string> }[]) {
+  const job = jobs.get(jobId);
+  if (!job) return;
+
+  const concurrency = 5;
+  const batchDelay = 300;
+
+  for (let i = 0; i < rows.length; i += concurrency) {
+    const batch = rows.slice(i, i + concurrency);
+    const batchResults = await Promise.all(
+      batch.map(async (row) => {
+        const result = await validateUsername(row.username, { timeout: 10_000 });
+        return { ...result, originalColumns: row.columns } as JobResult;
+      })
+    );
+
+    job.results.push(...batchResults);
+    job.processed = job.results.length;
+
+    if (i + concurrency < rows.length) {
+      await new Promise((resolve) => setTimeout(resolve, batchDelay));
+    }
+  }
+
+  job.status = "done";
+
+  // Auto-clean after 1 hour
+  setTimeout(() => jobs.delete(jobId), 60 * 60 * 1000);
+}
+
+/**
  * POST /api/upload
  * Multipart form: file (CSV), column? (string)
- * Streams results as Server-Sent Events for real-time progress.
+ * Returns: { jobId, total } — then poll GET /api/jobs/:id for progress.
  */
 app.post("/api/upload", upload.single("file"), async (req, res) => {
   if (!req.file) {
@@ -77,77 +120,61 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
     return res.status(400).json({ error: "Failed to parse CSV file" });
   }
 
-  // Clean up uploaded file
   fs.unlinkSync(req.file.path);
 
   if (rows.length === 0) {
     return res.status(400).json({ error: "No usernames found in CSV" });
   }
 
-  // Set up SSE
-  res.writeHead(200, {
-    "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache",
-    Connection: "keep-alive",
-  });
+  const jobId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const job: Job = {
+    status: "processing",
+    total: rows.length,
+    processed: 0,
+    results: [],
+    fileName: (req.file.originalname?.replace(/\.csv$/, "") || "results") + "_results.csv",
+  };
 
-  // Send total count
-  res.write(`data: ${JSON.stringify({ type: "start", total: rows.length })}\n\n`);
+  jobs.set(jobId, job);
 
-  const results: (ValidationResult & { originalColumns?: Record<string, string> })[] = [];
-  const concurrency = 5;
-  const batchDelay = 500;
+  // Start processing in the background — don't await
+  processJob(jobId, rows);
 
-  for (let i = 0; i < rows.length; i += concurrency) {
-    const batch = rows.slice(i, i + concurrency);
-    const batchResults = await Promise.all(
-      batch.map(async (row) => {
-        const result = await validateUsername(row.username, { timeout: 10_000 });
-        return { ...result, originalColumns: row.columns };
-      })
-    );
+  res.json({ jobId, total: rows.length });
+});
 
-    for (const result of batchResults) {
-      results.push(result);
-      res.write(
-        `data: ${JSON.stringify({
-          type: "result",
-          index: results.length,
-          total: rows.length,
-          result: {
-            username: result.username,
-            exists: result.exists,
-            displayName: result.displayName,
-            profileType: result.profileType,
-            error: result.error,
-          },
-        })}\n\n`
-      );
-    }
-
-    // Delay between batches
-    if (i + concurrency < rows.length) {
-      await new Promise((resolve) => setTimeout(resolve, batchDelay));
-    }
+/**
+ * GET /api/jobs/:id
+ * Returns current job status and recent results for polling.
+ * Query params:
+ *   after=N — only return results after index N (for incremental updates)
+ */
+app.get("/api/jobs/:id", (req, res) => {
+  const job = jobs.get(req.params.id);
+  if (!job) {
+    return res.status(404).json({ error: "Job not found or expired" });
   }
 
-  // Save results for download
-  const jobId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  jobs.set(jobId, {
-    results,
-    fileName: req.file.originalname?.replace(/\.csv$/, "") + "_results.csv",
+  const after = parseInt(req.query.after as string) || 0;
+  const newResults = job.results.slice(after).map((r) => ({
+    username: r.username,
+    exists: r.exists,
+    displayName: r.displayName,
+    profileType: r.profileType,
+    error: r.error,
+  }));
+
+  res.json({
+    status: job.status,
+    total: job.total,
+    processed: job.processed,
+    results: newResults,
   });
-
-  // Auto-clean after 30 minutes
-  setTimeout(() => jobs.delete(jobId), 30 * 60 * 1000);
-
-  res.write(`data: ${JSON.stringify({ type: "done", jobId })}\n\n`);
-  res.end();
 });
 
 /**
  * GET /api/download/:id
- * Downloads the results CSV for a completed job.
+ * Downloads the full results CSV.
  */
 app.get("/api/download/:id", (req, res) => {
   const job = jobs.get(req.params.id);
@@ -159,6 +186,26 @@ app.get("/api/download/:id", (req, res) => {
   writeCsv(tmpPath, job.results);
 
   res.download(tmpPath, job.fileName, () => {
+    fs.unlink(tmpPath, () => {});
+  });
+});
+
+/**
+ * GET /api/download/:id/existing
+ * Downloads CSV containing only usernames that exist.
+ */
+app.get("/api/download/:id/existing", (req, res) => {
+  const job = jobs.get(req.params.id);
+  if (!job) {
+    return res.status(404).json({ error: "Job not found or expired" });
+  }
+
+  const existing = job.results.filter((r) => r.exists);
+  const tmpPath = path.join(os.tmpdir(), `tg-existing-${req.params.id}.csv`);
+  const fileName = (job.fileName?.replace(/_results\.csv$/, "") || "existing") + "_existing.csv";
+  writeCsv(tmpPath, existing);
+
+  res.download(tmpPath, fileName, () => {
     fs.unlink(tmpPath, () => {});
   });
 });
