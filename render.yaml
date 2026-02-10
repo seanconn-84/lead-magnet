@@ -3,7 +3,7 @@ services:
     name: telegram-username-validator
     runtime: node
     buildCommand: npm install && npm run build
-    startCommand: npm run serve
+    startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
