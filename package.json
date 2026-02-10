@@ -2,10 +2,11 @@
   "name": "telegram-username-validator",
   "version": "1.0.0",
   "description": "Telegram username parsing and validation agent",
-  "main": "dist/index.js",
+  "main": "dist/web/server.js",
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
+    "postinstall": "npm run build",
     "start": "node dist/web/server.js",
     "serve": "node dist/web/server.js",
     "dev": "ts-node src/index.ts",
