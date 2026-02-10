@@ -102,19 +102,76 @@ function detectUsernameColumn(headers: string[]): number {
 }
 
 /**
+ * Splits raw CSV text into logical records, respecting quoted fields
+ * that may contain newlines.
+ */
+function splitCsvRecords(raw: string): string[] {
+  const records: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+
+    if (inQuotes) {
+      if (ch === '"') {
+        if (i + 1 < raw.length && raw[i + 1] === '"') {
+          current += '""';
+          i++;
+        } else {
+          inQuotes = false;
+          current += ch;
+        }
+      } else {
+        current += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+        current += ch;
+      } else if (ch === "\n") {
+        const trimmed = current.endsWith("\r")
+          ? current.slice(0, -1)
+          : current;
+        if (trimmed.length > 0) {
+          records.push(trimmed);
+        }
+        current = "";
+      } else {
+        current += ch;
+      }
+    }
+  }
+
+  // Handle last record (no trailing newline)
+  const trimmed = current.endsWith("\r") ? current.slice(0, -1) : current;
+  if (trimmed.length > 0) {
+    records.push(trimmed);
+  }
+
+  return records;
+}
+
+/**
  * Reads a CSV file and extracts usernames from it.
  */
 export function readCsv(filePath: string, options?: CsvReadOptions): CsvRow[] {
   const resolved = path.resolve(filePath);
-  const raw = fs.readFileSync(resolved, "utf-8");
-  const lines = raw.split(/\r?\n/).filter((l) => l.trim() !== "");
+  let raw = fs.readFileSync(resolved, "utf-8");
 
-  if (lines.length === 0) {
+  // Strip BOM
+  if (raw.charCodeAt(0) === 0xfeff) {
+    raw = raw.slice(1);
+  }
+
+  const records = splitCsvRecords(raw);
+
+  if (records.length === 0) {
     return [];
   }
 
-  const delimiter = options?.delimiter ?? detectDelimiter(lines[0]);
-  const headerFields = parseCsvLine(lines[0], delimiter);
+  const delimiter = options?.delimiter ?? detectDelimiter(records[0]);
+  const headerFields = parseCsvLine(records[0], delimiter);
 
   // Determine which column holds usernames
   let colIndex: number;
@@ -133,8 +190,8 @@ export function readCsv(filePath: string, options?: CsvReadOptions): CsvRow[] {
 
   const rows: CsvRow[] = [];
 
-  for (let i = 1; i < lines.length; i++) {
-    const fields = parseCsvLine(lines[i], delimiter);
+  for (let i = 1; i < records.length; i++) {
+    const fields = parseCsvLine(records[i], delimiter);
     const username = (fields[colIndex] || "").replace(/^@/, "").trim();
 
     if (!username && options?.skipEmpty !== false) continue;
