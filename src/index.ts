@@ -69,9 +69,15 @@ async function main() {
   const command = args[0];
   const rest = args.slice(1);
 
-  if (!command || command === "help" || flags["help"]) {
+  if (command === "help" || flags["help"]) {
     console.log(USAGE);
     process.exit(0);
+  }
+
+  // No command given — start the web server
+  if (!command) {
+    require("./web/server");
+    return;
   }
 
   const options = {
