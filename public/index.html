@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Telegram Username Validator</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f5f5f5;
+      color: #333;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }
+
+    h1 {
+      font-size: 28px;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: #666;
+      margin-bottom: 32px;
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 24px;
+      border-bottom: 2px solid #ddd;
+    }
+
+    .tab {
+      padding: 10px 24px;
+      border: none;
+      background: none;
+      font-size: 15px;
+      cursor: pointer;
+      color: #666;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      transition: color 0.2s, border-color 0.2s;
+    }
+
+    .tab:hover { color: #333; }
+    .tab.active { color: #0088cc; border-bottom-color: #0088cc; font-weight: 600; }
+
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    /* Cards */
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+    }
+
+    /* Upload area */
+    .upload-area {
+      border: 2px dashed #ccc;
+      border-radius: 12px;
+      padding: 48px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    .upload-area:hover, .upload-area.dragover {
+      border-color: #0088cc;
+      background: #f0f8ff;
+    }
+
+    .upload-area h3 { margin-bottom: 8px; font-size: 18px; }
+    .upload-area p { color: #888; font-size: 14px; }
+
+    .upload-area input[type="file"] { display: none; }
+
+    .file-selected {
+      margin-top: 12px;
+      padding: 8px 16px;
+      background: #e8f5e9;
+      border-radius: 6px;
+      display: inline-block;
+      font-size: 14px;
+    }
+
+    /* Manual input */
+    .input-row {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .input-row input {
+      flex: 1;
+      padding: 10px 14px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 15px;
+      outline: none;
+    }
+
+    .input-row input:focus { border-color: #0088cc; }
+
+    /* Buttons */
+    .btn {
+      padding: 10px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .btn-primary {
+      background: #0088cc;
+      color: #fff;
+    }
+
+    .btn-primary:hover { background: #006da3; }
+    .btn-primary:disabled { background: #99cce6; cursor: not-allowed; }
+
+    .btn-secondary {
+      background: #e0e0e0;
+      color: #333;
+    }
+
+    .btn-secondary:hover { background: #ccc; }
+
+    .btn-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-top: 16px;
+    }
+
+    /* Progress bar */
+    .progress-container {
+      display: none;
+      margin-bottom: 20px;
+    }
+
+    .progress-container.visible { display: block; }
+
+    .progress-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-size: 14px;
+      color: #666;
+    }
+
+    .progress-bar {
+      height: 8px;
+      background: #e0e0e0;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: #0088cc;
+      border-radius: 4px;
+      width: 0%;
+      transition: width 0.3s;
+    }
+
+    .progress-stats {
+      display: flex;
+      gap: 24px;
+      margin-top: 12px;
+      font-size: 14px;
+    }
+
+    .stat { display: flex; align-items: center; gap: 6px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .dot-exists { background: #4caf50; }
+    .dot-not-found { background: #f44336; }
+    .dot-error { background: #ff9800; }
+
+    /* Results table */
+    .results-section { display: none; }
+    .results-section.visible { display: block; }
+
+    .results-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .results-header h3 { font-size: 16px; }
+
+    .filter-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .filter-btn {
+      padding: 6px 14px;
+      border: 1px solid #ddd;
+      border-radius: 20px;
+      background: #fff;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .filter-btn:hover { border-color: #0088cc; color: #0088cc; }
+    .filter-btn.active { background: #0088cc; color: #fff; border-color: #0088cc; }
+
+    .table-wrap {
+      overflow-x: auto;
+      border-radius: 8px;
+      border: 1px solid #e0e0e0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th {
+      background: #f9f9f9;
+      text-align: left;
+      padding: 10px 14px;
+      font-weight: 600;
+      border-bottom: 1px solid #e0e0e0;
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 10px 14px;
+      border-bottom: 1px solid #f0f0f0;
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #f9f9f9; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .badge-exists { background: #e8f5e9; color: #2e7d32; }
+    .badge-not-found { background: #ffebee; color: #c62828; }
+    .badge-error { background: #fff3e0; color: #e65100; }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: #888;
+    }
+
+    /* Column select */
+    .column-select {
+      display: none;
+      margin-top: 16px;
+    }
+
+    .column-select.visible { display: block; }
+
+    .column-select label {
+      font-size: 14px;
+      font-weight: 600;
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .column-select select {
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+      min-width: 200px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Telegram Username Validator</h1>
+    <p class="subtitle">Check if usernames exist on Telegram. Upload a CSV or enter them manually.</p>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="upload">Upload CSV</button>
+      <button class="tab" data-tab="manual">Manual Check</button>
+    </div>
+
+    <!-- CSV Upload Panel -->
+    <div id="panel-upload" class="panel active">
+      <div class="card">
+        <div class="upload-area" id="dropZone">
+          <h3>Drop your CSV file here</h3>
+          <p>or click to browse. Supports .csv files with a username column.</p>
+          <input type="file" id="fileInput" accept=".csv">
+          <div class="file-selected" id="fileLabel" style="display:none"></div>
+        </div>
+
+        <div class="column-select" id="columnSelect">
+          <label>Username column:</label>
+          <select id="columnDropdown"></select>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn btn-primary" id="startBtn" disabled>Validate Usernames</button>
+          <button class="btn btn-secondary" id="clearBtn" style="display:none">Clear</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Manual Check Panel -->
+    <div id="panel-manual" class="panel">
+      <div class="card">
+        <div class="input-row">
+          <input type="text" id="manualInput" placeholder="Enter usernames separated by commas (e.g. durov, BotFather, telegram)">
+        </div>
+        <button class="btn btn-primary" id="manualBtn">Check Usernames</button>
+      </div>
+    </div>
+
+    <!-- Progress -->
+    <div class="progress-container" id="progress">
+      <div class="card">
+        <div class="progress-header">
+          <span id="progressLabel">Validating...</span>
+          <span id="progressCount">0 / 0</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <div class="progress-stats">
+          <div class="stat"><div class="dot dot-exists"></div><span id="statExists">0 exist</span></div>
+          <div class="stat"><div class="dot dot-not-found"></div><span id="statNotFound">0 not found</span></div>
+          <div class="stat"><div class="dot dot-error"></div><span id="statErrors">0 errors</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div class="results-section" id="results">
+      <div class="results-header">
+        <h3 id="resultsTitle">Results</h3>
+        <button class="btn btn-primary" id="downloadBtn" style="display:none">Download CSV</button>
+      </div>
+
+      <div class="filter-row">
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="exists">Exists</button>
+        <button class="filter-btn" data-filter="not-found">Not Found</button>
+        <button class="filter-btn" data-filter="error">Errors</button>
+      </div>
+
+      <div class="card" style="padding: 0; overflow: hidden;">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Username</th>
+                <th>Status</th>
+                <th>Display Name</th>
+                <th>Type</th>
+                <th>Details</th>
+              </tr>
+            </thead>
+            <tbody id="resultsBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // State
+    let allResults = [];
+    let currentFilter = "all";
+    let selectedFile = null;
+    let jobId = null;
+
+    // Elements
+    const $ = (sel) => document.querySelector(sel);
+    const $$ = (sel) => document.querySelectorAll(sel);
+
+    // Tabs
+    $$(".tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        $$(".tab").forEach((t) => t.classList.remove("active"));
+        $$(".panel").forEach((p) => p.classList.remove("active"));
+        tab.classList.add("active");
+        $(`#panel-${tab.dataset.tab}`).classList.add("active");
+      });
+    });
+
+    // File upload
+    const dropZone = $("#dropZone");
+    const fileInput = $("#fileInput");
+
+    dropZone.addEventListener("click", () => fileInput.click());
+
+    dropZone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropZone.classList.add("dragover");
+    });
+
+    dropZone.addEventListener("dragleave", () => {
+      dropZone.classList.remove("dragover");
+    });
+
+    dropZone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropZone.classList.remove("dragover");
+      if (e.dataTransfer.files.length) {
+        handleFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    fileInput.addEventListener("change", () => {
+      if (fileInput.files.length) {
+        handleFile(fileInput.files[0]);
+      }
+    });
+
+    function handleFile(file) {
+      if (!file.name.endsWith(".csv")) {
+        alert("Please upload a .csv file");
+        return;
+      }
+      selectedFile = file;
+      $("#fileLabel").textContent = file.name + " (" + formatSize(file.size) + ")";
+      $("#fileLabel").style.display = "inline-block";
+      $("#startBtn").disabled = false;
+      $("#clearBtn").style.display = "inline-block";
+
+      // Parse headers to show column selector
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const firstLine = e.target.result.split("\n")[0];
+        const headers = firstLine.split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
+        const dropdown = $("#columnDropdown");
+        dropdown.innerHTML = '<option value="">Auto-detect</option>';
+        headers.forEach((h) => {
+          const opt = document.createElement("option");
+          opt.value = h;
+          opt.textContent = h;
+          dropdown.appendChild(opt);
+        });
+        $("#columnSelect").classList.add("visible");
+      };
+      reader.readAsText(file.slice(0, 4096));
+    }
+
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + " B";
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+      return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+    }
+
+    $("#clearBtn").addEventListener("click", () => {
+      selectedFile = null;
+      fileInput.value = "";
+      $("#fileLabel").style.display = "none";
+      $("#startBtn").disabled = true;
+      $("#clearBtn").style.display = "none";
+      $("#columnSelect").classList.remove("visible");
+    });
+
+    // Start CSV validation
+    $("#startBtn").addEventListener("click", () => {
+      if (!selectedFile) return;
+      startCsvValidation();
+    });
+
+    async function startCsvValidation() {
+      resetResults();
+      $("#startBtn").disabled = true;
+      $("#progress").classList.add("visible");
+      $("#results").classList.add("visible");
+
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      const col = $("#columnDropdown").value;
+      if (col) formData.append("column", col);
+
+      try {
+        const response = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          alert("Error: " + (err.error || "Upload failed"));
+          $("#startBtn").disabled = false;
+          return;
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const data = JSON.parse(line.slice(6));
+            handleSSE(data);
+          }
+        }
+      } catch (err) {
+        alert("Connection error: " + err.message);
+      }
+
+      $("#startBtn").disabled = false;
+      $("#progressLabel").textContent = "Complete";
+    }
+
+    function handleSSE(data) {
+      if (data.type === "start") {
+        $("#progressCount").textContent = `0 / ${data.total}`;
+      } else if (data.type === "result") {
+        allResults.push(data.result);
+        updateProgress(data.index, data.total);
+        renderResults();
+      } else if (data.type === "done") {
+        jobId = data.jobId;
+        if (jobId) {
+          $("#downloadBtn").style.display = "inline-block";
+        }
+      }
+    }
+
+    function updateProgress(current, total) {
+      const pct = (current / total) * 100;
+      $("#progressFill").style.width = pct + "%";
+      $("#progressCount").textContent = `${current} / ${total}`;
+
+      const exists = allResults.filter((r) => r.exists).length;
+      const errors = allResults.filter((r) => r.error && !r.exists).length;
+      const notFound = allResults.length - exists - errors;
+
+      $("#statExists").textContent = `${exists} exist`;
+      $("#statNotFound").textContent = `${notFound} not found`;
+      $("#statErrors").textContent = `${errors} errors`;
+    }
+
+    // Manual check
+    $("#manualBtn").addEventListener("click", async () => {
+      const input = $("#manualInput").value.trim();
+      if (!input) return;
+
+      const usernames = input.split(/[,\s]+/).filter(Boolean);
+      if (usernames.length === 0) return;
+
+      resetResults();
+      $("#manualBtn").disabled = true;
+      $("#progress").classList.add("visible");
+      $("#results").classList.add("visible");
+      $("#progressCount").textContent = `0 / ${usernames.length}`;
+
+      try {
+        const response = await fetch("/api/check", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ usernames }),
+        });
+
+        const data = await response.json();
+        allResults = data.results;
+
+        updateProgress(allResults.length, allResults.length);
+        renderResults();
+        $("#progressLabel").textContent = "Complete";
+      } catch (err) {
+        alert("Error: " + err.message);
+      }
+
+      $("#manualBtn").disabled = false;
+    });
+
+    $("#manualInput").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") $("#manualBtn").click();
+    });
+
+    // Download
+    $("#downloadBtn").addEventListener("click", () => {
+      if (jobId) {
+        window.location.href = `/api/download/${jobId}`;
+      }
+    });
+
+    // Filters
+    $$(".filter-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        $$(".filter-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        currentFilter = btn.dataset.filter;
+        renderResults();
+      });
+    });
+
+    // Render
+    function resetResults() {
+      allResults = [];
+      jobId = null;
+      currentFilter = "all";
+      $$(".filter-btn").forEach((b) => b.classList.remove("active"));
+      $$('.filter-btn[data-filter="all"]').forEach((b) => b.classList.add("active"));
+      $("#resultsBody").innerHTML = "";
+      $("#downloadBtn").style.display = "none";
+      $("#progressFill").style.width = "0%";
+      $("#progressLabel").textContent = "Validating...";
+      $("#progress").classList.remove("visible");
+      $("#results").classList.remove("visible");
+    }
+
+    function renderResults() {
+      const filtered = allResults.filter((r) => {
+        if (currentFilter === "all") return true;
+        if (currentFilter === "exists") return r.exists;
+        if (currentFilter === "not-found") return !r.exists && !r.error;
+        if (currentFilter === "error") return !!r.error;
+        return true;
+      });
+
+      const tbody = $("#resultsBody");
+      tbody.innerHTML = "";
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No results to show</td></tr>';
+        return;
+      }
+
+      // Only render first 500 for performance
+      const shown = filtered.slice(0, 500);
+
+      for (let i = 0; i < shown.length; i++) {
+        const r = shown[i];
+        const tr = document.createElement("tr");
+
+        let badge;
+        if (r.exists) badge = '<span class="badge badge-exists">Exists</span>';
+        else if (r.error) badge = '<span class="badge badge-error">Error</span>';
+        else badge = '<span class="badge badge-not-found">Not Found</span>';
+
+        tr.innerHTML = `
+          <td>${i + 1}</td>
+          <td><strong>@${escapeHtml(r.username)}</strong></td>
+          <td>${badge}</td>
+          <td>${escapeHtml(r.displayName || "")}</td>
+          <td>${escapeHtml(r.profileType || "")}</td>
+          <td>${escapeHtml(r.error || r.description || "")}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+
+      if (filtered.length > 500) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td colspan="6" class="empty-state">Showing first 500 of ${filtered.length} results. Download CSV for full data.</td>`;
+        tbody.appendChild(tr);
+      }
+
+      const total = allResults.length;
+      const exists = allResults.filter((r) => r.exists).length;
+      $("#resultsTitle").textContent = `Results: ${exists} of ${total} exist on Telegram`;
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement("div");
+      div.textContent = str;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>

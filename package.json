@@ -7,18 +7,31 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
+    "serve": "node dist/web/server.js",
     "dev": "ts-node src/index.ts",
+    "dev:web": "ts-node src/web/server.ts",
     "test": "jest --verbose",
     "lint": "tsc --noEmit"
   },
-  "keywords": ["telegram", "username", "validator", "parser"],
+  "keywords": [
+    "telegram",
+    "username",
+    "validator",
+    "parser"
+  ],
   "license": "MIT",
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/jest": "^29.5.12",
+    "@types/multer": "^2.0.0",
     "@types/node": "^22.0.0",
     "jest": "^29.7.0",
     "ts-jest": "^29.1.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.0"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "multer": "^2.0.2"
   }
 }

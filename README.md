@@ -144,6 +144,25 @@ node dist/index.js check-file founders.csv --output results.csv --existing-only
 
 This reads `founders.csv`, checks every username against Telegram, and writes only the verified accounts to `results.csv`.
 
+## Web App
+
+There's also a web UI if you prefer a visual interface over the command line.
+
+**Start the server:**
+
+```bash
+npm run build
+npm run serve
+```
+
+Then open **http://localhost:3000** in your browser.
+
+From there you can:
+- Drag-and-drop a CSV file and watch results stream in live
+- Enter usernames manually to check them one-off
+- Filter results by status (exists / not found / errors)
+- Download the full results as a CSV
+
 ## Running Tests
 
 ```bash
