@@ -57,26 +57,40 @@ function fetchProfilePage(username: string, timeout: number): Promise<string> {
       (res) => {
         // Follow redirects
         if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          const redirectReq = https.get(
-            res.headers.location,
-            {
-              headers: {
-                "User-Agent":
-                  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          let redirectUrl = res.headers.location;
+          if (redirectUrl.startsWith("//")) redirectUrl = "https:" + redirectUrl;
+          else if (redirectUrl.startsWith("/")) redirectUrl = `https://t.me${redirectUrl}`;
+
+          // If redirect goes off-site (e.g. telegram.org), user doesn't exist on t.me
+          if (!redirectUrl.includes("t.me/")) {
+            resolve("");
+            return;
+          }
+
+          try {
+            const redirectReq = https.get(
+              redirectUrl,
+              {
+                headers: {
+                  "User-Agent":
+                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                },
+                timeout,
               },
-              timeout,
-            },
-            (redirectRes) => {
-              let data = "";
-              redirectRes.on("data", (chunk) => (data += chunk));
-              redirectRes.on("end", () => resolve(data));
-            }
-          );
-          redirectReq.on("error", reject);
-          redirectReq.on("timeout", () => {
-            redirectReq.destroy();
-            reject(new Error("Request timed out"));
-          });
+              (redirectRes) => {
+                let data = "";
+                redirectRes.on("data", (chunk) => (data += chunk));
+                redirectRes.on("end", () => resolve(data));
+              }
+            );
+            redirectReq.on("error", reject);
+            redirectReq.on("timeout", () => {
+              redirectReq.destroy();
+              reject(new Error("Request timed out"));
+            });
+          } catch {
+            resolve("");
+          }
           return;
         }
 
